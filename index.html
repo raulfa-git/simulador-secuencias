@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Simulador de Secuencias</title>
+
+<style>
+:root{
+  --azul:#4aa3ff;
+  --verde:#5cc96b;
+  --rojo:#ff6b6b;
+  --naranja:#ff9800;
+}
+
+*{
+  box-sizing:border-box;
+}
+
+body{
+  margin:0;
+  font-family:Arial, sans-serif;
+  background:#eef6ff;
+  color:#222;
+}
+
+h1{
+  text-align:center;
+  margin:10px;
+  color:#234;
+}
+
+.container{
+  display:flex;
+  flex-wrap:wrap;
+  justify-content:center;
+  gap:20px;
+  padding:15px;
+}
+
+.panel{
+  background:white;
+  border-radius:16px;
+  padding:15px;
+  box-shadow:0 3px 10px rgba(0,0,0,.15);
+}
+
+#grid{
+  display:grid;
+  grid-template-columns:repeat(6,70px);
+  grid-template-rows:repeat(6,70px);
+  gap:2px;
+  background:#b8c8d8;
+  padding:2px;
+  border-radius:12px;
+}
+
+.cell{
+  background:white;
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  position:relative;
+  cursor:pointer;
+  font-size:30px;
+}
+
+.goal::after{
+  content:"⭐";
+  font-size:32px;
+}
+
+.obstacle{
+  background:#777;
+}
+
+.robot{
+  font-size:38px;
+}
+
+.controls{
+  display:grid;
+  grid-template-columns:repeat(2,1fr);
+  gap:10px;
+  max-width:360px;
+}
+
+button{
+  font-size:20px;
+  font-weight:bold;
+  padding:14px;
+  border:none;
+  border-radius:12px;
+  cursor:pointer;
+  color:white;
+}
+
+.btn-step{
+  background:var(--azul);
+}
+
+.btn-play{
+  background:var(--naranja);
+}
+
+.btn-clear{
+  background:var(--rojo);
+}
+
+button:hover{
+  transform:scale(1.03);
+}
+
+.queue{
+  min-height:80px;
+  margin-top:10px;
+  border:3px dashed #cfd8dc;
+  border-radius:12px;
+  padding:10px;
+  background:#fafafa;
+}
+
+.step{
+  display:inline-block;
+  padding:8px 10px;
+  margin:4px;
+  border-radius:10px;
+  background:#dff1ff;
+  font-size:18px;
+}
+
+.info{
+  margin-top:12px;
+  font-size:22px;
+  font-weight:bold;
+}
+
+.message{
+  min-height:32px;
+  margin-top:10px;
+  font-size:22px;
+  font-weight:bold;
+  color:#c62828;
+}
+
+.legend{
+  margin-top:12px;
+  line-height:1.5;
+}
+
+.teacher{
+  margin-top:15px;
+  background:#fff9c4;
+  border-radius:10px;
+  padding:10px;
+  font-size:15px;
+}
+
+@media (max-width:900px){
+  #grid{
+    grid-template-columns:repeat(6,55px);
+    grid-template-rows:repeat(6,55px);
+  }
+}
+</style>
+</head>
+<body>
+
+<h1>🤖 Simulador de Secuencias</h1>
+
+<div class="container">
+
+<div class="panel">
+
+<div id="grid"></div>
+
+<div class="legend">
+⭐ Meta<br>
+⬛ Obstáculo (clic para poner o quitar)
+</div>
+
+</div>
+
+<div class="panel">
+
+<div class="controls">
+<button class="btn-step" onclick="addCommand('P1')">Paso 1</button>
+<button class="btn-step" onclick="addCommand('P2')">Paso 2</button>
+<button class="btn-step" onclick="addCommand('P3')">Paso 3</button>
+<button class="btn-step" onclick="addCommand('P4')">Paso 4</button>
+
+<button class="btn-play" onclick="playProgram()">▶ Play</button>
+<button class="btn-clear" onclick="clearProgram()">🗑 Borrar</button>
+</div>
+
+<h3>Programa</h3>
+
+<div id="queue" class="queue"></div>
+
+<div class="info">
+Órdenes: <span id="counter">0</span>
+</div>
+
+<div id="message" class="message"></div>
+
+<div class="teacher">
+<strong>Para el profesorado:</strong><br>
+Antes de jugar, acordad qué significa cada paso.
+Por ejemplo:
+<ul>
+<li>Paso 1 = avanzar una casilla</li>
+<li>Paso 2 = girar a la derecha</li>
+<li>Paso 3 = avanzar una casilla</li>
+<li>Paso 4 = girar a la izquierda</li>
+</ul>
+El objetivo es comprender que el orden de las instrucciones cambia el resultado.
+</div>
+
+</div>
+
+</div>
+
+<script>
+
+const gridSize=6;
+
+const grid=document.getElementById("grid");
+const queueDiv=document.getElementById("queue");
+const counter=document.getElementById("counter");
+const message=document.getElementById("message");
+
+let commands=[];
+
+/*
+CONFIGURACIÓN DIDÁCTICA
+Puede modificarse libremente.
+No representa órdenes confirmadas
+del robot TrueTrue.
+*/
+
+const meanings={
+ P1:"forward",
+ P2:"right",
+ P3:"forward",
+ P4:"left"
+};
+
+let robot={
+ x:0,
+ y:5,
+ dir:0
+};
+
+const goal={
+ x:5,
+ y:0
+};
+
+let obstacles=new Set();
+
+function createGrid(){
+
+ grid.innerHTML="";
+
+ for(let y=0;y<gridSize;y++){
+   for(let x=0;x<gridSize;x++){
+
+     const cell=document.createElement("div");
+
+     cell.className="cell";
+     cell.dataset.x=x;
+     cell.dataset.y=y;
+
+     if(x===goal.x && y===goal.y){
+       cell.classList.add("goal");
+     }
+
+     cell.addEventListener("click",()=>{
+       toggleObstacle(x,y);
+     });
+
+     grid.appendChild(cell);
+   }
+ }
+
+ draw();
+}
+
+function toggleObstacle(x,y){
+
+ if((x===robot.x && y===robot.y) ||
+    (x===goal.x && y===goal.y)){
+    return;
+ }
+
+ const key=`${x},${y}`;
+
+ if(obstacles.has(key)){
+   obstacles.delete(key);
+ }else{
+   obstacles.add(key);
+ }
+
+ draw();
+}
+
+function robotArrow(){
+
+ const arrows=["➡️","⬇️","⬅️","⬆️"];
+ return arrows[robot.dir];
+}
+
+function draw(){
+
+ document.querySelectorAll(".cell").forEach(cell=>{
+
+   cell.innerHTML="";
+   cell.classList.remove("obstacle");
+
+   const x=parseInt(cell.dataset.x);
+   const y=parseInt(cell.dataset.y);
+
+   const key=`${x},${y}`;
+
+   if(obstacles.has(key)){
+     cell.classList.add("obstacle");
+   }
+
+   if(x===robot.x && y===robot.y){
+
+     const r=document.createElement("div");
+
+     r.className="robot";
+     r.textContent=robotArrow();
+
+     cell.appendChild(r);
+   }
+ });
+}
+
+function addCommand(cmd){
+
+ commands.push(cmd);
+ updateProgram();
+}
+
+function updateProgram(){
+
+ queueDiv.innerHTML="";
+
+ commands.forEach(cmd=>{
+
+   const span=document.createElement("span");
+
+   span.className="step";
+   span.textContent=cmd;
+
+   queueDiv.appendChild(span);
+ });
+
+ counter.textContent=commands.length;
+}
+
+function clearProgram(){
+
+ commands=[];
+ updateProgram();
+ message.textContent="";
+}
+
+function sleep(ms){
+ return new Promise(resolve=>setTimeout(resolve,ms));
+}
+
+async function playProgram(){
+
+ message.textContent="";
+
+ for(const command of commands){
+
+   executeMeaning(meanings[command]);
+
+   draw();
+
+   const key=`${robot.x},${robot.y}`;
+
+   if(obstacles.has(key)){
+     message.textContent="⛔ La secuencia llega a un obstáculo";
+     return;
+   }
+
+   if(robot.x===goal.x && robot.y===goal.y){
+     message.textContent="🎉 ¡Meta!";
+     return;
+   }
+
+   await sleep(800);
+ }
+}
+
+function executeMeaning(action){
+
+ if(action==="left"){
+   robot.dir=(robot.dir+3)%4;
+   return;
+ }
+
+ if(action==="right"){
+   robot.dir=(robot.dir+1)%4;
+   return;
+ }
+
+ if(action==="forward"){
+
+   if(robot.dir===0 && robot.x<5) robot.x++;
+   else if(robot.dir===1 && robot.y<5) robot.y++;
+   else if(robot.dir===2 && robot.x>0) robot.x--;
+   else if(robot.dir===3 && robot.y>0) robot.y--;
+ }
+}
+
+createGrid();
+updateProgram();
+
+</script>
+
+</body>
+</html>
